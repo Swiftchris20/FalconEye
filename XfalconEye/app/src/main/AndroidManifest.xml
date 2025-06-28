@@ -26,7 +26,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@drawable/xemotion_logo"
-        android:label="@string/app_name"
+        android:label="xfalconeye"
         android:roundIcon="@drawable/xemotion_logo"
         android:supportsRtl="true"
         android:theme="@style/Theme.Xemotion"
