@@ -1,0 +1,5 @@
+train: C:/Users/ebube/Documents/Programming projects/YOLOV5+OpenCv/dataset/images/train
+val: C:/Users/ebube/Documents/Programming projects/YOLOV5+OpenCv/dataset/images/val
+
+nc: 1
+names: ['yellow_water_balloon']
