@@ -280,51 +280,75 @@ class CameraHelper(
     // Rolling shutter & exposure
     // ------------------------------------------------------------------------
     fun applyRollingShutter() {
-        // Decide if we can do manual or must do auto
+        // 1) Pick the active camera and query its capabilities
         val cameraId = getCameraId()
         val characteristics = cameraManager.getCameraCharacteristics(cameraId)
-
-        val capabilities = characteristics.get(CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES)
+        val capabilities = characteristics.get(
+            CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES
+        )
+        // Can we manually control exposure & ISO?
         val canManualExposure = capabilities?.contains(
             CameraCharacteristics.REQUEST_AVAILABLE_CAPABILITIES_MANUAL_SENSOR
         ) == true
 
-        val shutterFps = sharedPreferences.getString("shutter_speed", "15")?.toIntOrNull() ?: 15
-        val shutterValueNs = if (shutterFps > 0) 1_000_000_000L / shutterFps else 0L
+        // 2) Read the user‑configured shutter speed (Hz) from prefs
+        val shutterFps = sharedPreferences
+            .getString("shutter_speed", "15")
+            ?.toIntOrNull() ?: 15
+        // Convert Hz → nanoseconds per frame
+        val shutterValueNs = if (shutterFps > 0) {
+            1_000_000_000L / shutterFps
+        } else {
+            0L
+        }
 
-        // If no manual or user set 0, just do auto
-        if (!canManualExposure || shutterValueNs <= 0) {
+        // 3) If manual control unavailable or user set 0, fall back to auto‑AE
+        if (!canManualExposure || shutterValueNs <= 0L) {
             setAutoExposure()
             return
         }
 
-        // If we can do manual, clamp to valid range
-        val exposureTimeRange = characteristics.get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
-        val isoRange = characteristics.get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
+        // 4) Query the sensor’s supported exposure/ISO ranges
+        val exposureTimeRange = characteristics
+            .get(CameraCharacteristics.SENSOR_INFO_EXPOSURE_TIME_RANGE)
+        val isoRange = characteristics
+            .get(CameraCharacteristics.SENSOR_INFO_SENSITIVITY_RANGE)
 
+        // 5) If ranges aren’t available, also fall back to auto
         if (exposureTimeRange == null || isoRange == null) {
-            // fallback to auto if no valid range
             setAutoExposure()
             return
         }
 
-        val safeExposureNs = shutterValueNs.coerceIn(exposureTimeRange.lower, exposureTimeRange.upper)
+        // 6) Clamp the desired exposure into the hardware limits
+        val safeExposureNs = shutterValueNs.coerceIn(
+            exposureTimeRange.lower,
+            exposureTimeRange.upper
+        )
+        // Pick a reasonable minimum ISO (sensor’s lower bound or 100)
         val safeISO = max(isoRange.lower, 100)
 
-        // fully manual
-        captureRequestBuilder?.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_OFF)
-        captureRequestBuilder?.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
-        captureRequestBuilder?.set(CaptureRequest.SENSOR_EXPOSURE_TIME, safeExposureNs)
-        captureRequestBuilder?.set(CaptureRequest.SENSOR_SENSITIVITY, safeISO)
+        // 7) Finally, switch the request builder into full‑manual and apply
+        captureRequestBuilder?.apply {
+            // turn off all auto modes
+            set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_OFF)
+            set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_OFF)
+            // set our computed exposure & ISO
+            set(CaptureRequest.SENSOR_EXPOSURE_TIME, safeExposureNs)
+            set(CaptureRequest.SENSOR_SENSITIVITY, safeISO)
+        }
     }
 
     private fun setAutoExposure() {
-        captureRequestBuilder?.set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
-        captureRequestBuilder?.set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
+        captureRequestBuilder?.apply {
+            // restore auto‑AE
+            set(CaptureRequest.CONTROL_MODE, CameraMetadata.CONTROL_MODE_AUTO)
+            set(CaptureRequest.CONTROL_AE_MODE, CameraMetadata.CONTROL_AE_MODE_ON)
+        }
     }
 
     fun forceArRollingShutter() {
-        // For AR mode, fix shutter speed to 350 Hz (1 / 350s).
+        // For AR mode, fix shutter speed to 250 Hz (1 / 350s).
         // Then immediately update the camera capture session.
 
         val cameraId = getCameraId()
@@ -353,22 +377,6 @@ class CameraHelper(
         captureRequestBuilder?.set(CaptureRequest.SENSOR_SENSITIVITY, safeISO)
 
         // Now push the settings to the active capture session
-        try {
-            cameraCaptureSession?.setRepeatingRequest(
-                captureRequestBuilder!!.build(),
-                null,
-                backgroundHandler
-            )
-        } catch (e: CameraAccessException) {
-            e.printStackTrace()
-        }
-    }
-
-    /**
-     * If user changes shutter speed in settings, we re-apply
-     */
-    fun updateShutterSpeed() {
-        applyRollingShutter()
         try {
             cameraCaptureSession?.setRepeatingRequest(
                 captureRequestBuilder!!.build(),

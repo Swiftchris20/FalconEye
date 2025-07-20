@@ -60,7 +60,6 @@ private const val thickness = 3
 // Settings
 // --------------------------------------------------
 object Settings {
-
     object DetectionMode {
         enum class Mode {
             CONTOUR,
@@ -69,12 +68,10 @@ object Settings {
         var current: Mode = Mode.YOLO
         var enableYOLOinference = true
     }
-
     object Inference {
         var confidenceThreshold: Float = 0.5f
         var iouThreshold: Float = 0.5f
     }
-
     object Trace {
         var enableRAWtrace = true
         var enableSPLINEtrace = false
@@ -85,7 +82,6 @@ object Settings {
         var splineLineColor   = Scalar(255.0, 203.0, 5.0) // Maize
         var lineThickness     = 100
     }
-
     object BoundingBox {
         var enableBoundingBox = true
 
@@ -93,17 +89,14 @@ object Settings {
         var boxColor = Scalar(0.0, 39.0, 76.0)
         var boxThickness = 10
     }
-
     object Brightness {
         var factor = 2.0
         var threshold = 150.0
     }
-
     object ExportData {
         var frameIMG = true
         var enablePredictionLogging = true
     }
-
     object RollingShutter {
         // Set or update this from SettingsActivity
         var speedHz = 15f
@@ -378,6 +371,7 @@ class VideoProcessor(private val context: Context) {
                     // a) Lookup ball label
                     val classId   = box.classId.coerceIn(1, 5)
                     val ballLabel = YOLOHelper.ballLabels[classId - 1]
+
                     // b) Use existing speed classification (fallback = "Tracking")
                     val speedLabel = classificationLabel.ifEmpty { "Tracking" }
                     // c) Combine both labels
@@ -440,7 +434,7 @@ class VideoProcessor(private val context: Context) {
     // Export trace for data
     // --------------------------------------------------------------------------------
     fun exportTraceForDataCollection(): Bitmap {
-        val snapshot = smoothDataList.toList()
+        val snapshot = rawDataList.toList()
         if (snapshot.isEmpty()) {
             // Return a tiny black bitmap if we have no data
             return Bitmap.createBitmap(1, 1, Bitmap.Config.ARGB_8888).apply {
@@ -476,17 +470,17 @@ class VideoProcessor(private val context: Context) {
             Point((it.x - minX) + padding, (it.y - minY) + padding)
         }
 
-        val origColor = Settings.Trace.splineLineColor
+        val origColor = Settings.Trace.originalLineColor
         val origThickness = Settings.Trace.lineThickness
 
         // Temporarily override color/thickness to get a white line on black
-        Settings.Trace.splineLineColor = Scalar(255.0, 255.0, 255.0)
+        Settings.Trace.originalLineColor = Scalar(255.0, 255.0, 255.0)
         Settings.Trace.lineThickness = 10
 
         TraceRenderer.drawSplineCurve(adjustedPoints, mat)
 
         // restore
-        Settings.Trace.splineLineColor = origColor
+        Settings.Trace.originalLineColor = origColor
         Settings.Trace.lineThickness = origThickness
 
         val intermediate = Bitmap.createBitmap(matWidth, matHeight, Bitmap.Config.ARGB_8888).apply {
@@ -705,8 +699,18 @@ object YOLOHelper {
     // 2) Build matching labels
     val ballLabels   = Array(5) { idx -> "Ball ${classNumbers[idx]}" }  // ["Ball 1", …, "Ball 5"]
 
+    /**
+     * Parses the raw YOLO model output into a single DetectionResult:
+     *  1) Filters out low‑confidence detections
+     *  2) Converts remaining detections into BoundingBox objects
+     *  3) Applies Non‑Max Suppression (NMS) to remove overlapping boxes
+     *  4) Returns the highest‑confidence detection (or null if none)
+     */
     fun parseTFLite(rawOutput: Array<Array<FloatArray>>): DetectionResult? {
+        // Total number of candidate detections from the model
         val numDetections = rawOutput[0][0].size
+
+        // Step 1: Collect all detections above the confidence threshold
         val detections = mutableListOf<DetectionResult>()
         for (i in 0 until numDetections) {
             val xCenter = rawOutput[0][0][i]
@@ -715,59 +719,97 @@ object YOLOHelper {
             val height  = rawOutput[0][3][i]
             val conf    = rawOutput[0][4][i]
 
+            // Keep only detections with confidence ≥ threshold
             if (conf >= Settings.Inference.confidenceThreshold) {
                 detections.add(DetectionResult(xCenter, yCenter, width, height, conf))
             }
         }
+        // If no valid detections remain, return null
         if (detections.isEmpty()) {
             return null
         }
 
-        // Convert to bounding boxes
-        val detectionBoxes = detections.map { it to detectionToBox(it) }.toMutableList()
+        // Step 2: Convert each DetectionResult into a BoundingBox (for IoU calculations)
+        // Pair each DetectionResult with its corresponding BoundingBox
+        val detectionBoxes = detections
+            .map { det -> det to detectionToBox(det) }
+            .toMutableList()
+
+        // Sort by descending confidence so the highest‑confidence boxes are processed first
         detectionBoxes.sortByDescending { it.first.confidence }
 
-        // Non-max suppression
+        // Step 3: Non‑Max Suppression (NMS)
+        // Keep only one detection out of overlapping groups:
         val nmsDetections = mutableListOf<DetectionResult>()
         while (detectionBoxes.isNotEmpty()) {
-            val current = detectionBoxes.removeAt(0)
-            nmsDetections.add(current.first)
-            detectionBoxes.removeAll { other ->
-                computeIoU(current.second, other.second) > Settings.Inference.iouThreshold
+            // 3a) Take the current highest‑confidence detection
+            val (bestDet, bestBox) = detectionBoxes.removeAt(0)
+            nmsDetections.add(bestDet)
+
+            // 3b) Remove all other detections whose IoU with the bestBox exceeds the IoU threshold
+            detectionBoxes.removeAll { (_, otherBox) ->
+                computeIoU(bestBox, otherBox) > Settings.Inference.iouThreshold
             }
         }
 
+        // Step 4: From the surviving set after NMS, return the one with the highest confidence
         return nmsDetections.maxByOrNull { it.confidence }
     }
 
+    /**
+     * Convert a DetectionResult (center + size in normalized/model coordinates)
+     * into an absolute BoundingBox in the same coordinate space.
+     */
     private fun detectionToBox(d: DetectionResult) = BoundingBox(
-        x1 = d.xCenter - d.width / 2,
+        // Top-left corner = center minus half width/height
+        x1 = d.xCenter - d.width  / 2,
         y1 = d.yCenter - d.height / 2,
-        x2 = d.xCenter + d.width / 2,
+        // Bottom-right corner = center plus half width/height
+        x2 = d.xCenter + d.width  / 2,
         y2 = d.yCenter + d.height / 2,
+        // Preserve the confidence score
         confidence = d.confidence,
-        classId = 1
+        // For now we default all detections to class ID 1 (e.g. “ball”)
+        classId    = 1
     )
-
+    /**
+     * Compute the Intersection-over-Union (IoU) between two bounding boxes.
+     * Returns the ratio of the overlapping area to the union of both areas.
+     */
     private fun computeIoU(boxA: BoundingBox, boxB: BoundingBox): Float {
+        // 1) Find coordinates of intersection rectangle
         val x1 = max(boxA.x1, boxB.x1)
         val y1 = max(boxA.y1, boxB.y1)
         val x2 = min(boxA.x2, boxB.x2)
         val y2 = min(boxA.y2, boxB.y2)
 
+        // 2) Compute width/height of intersection (clamp at zero)
         val intersectionW = max(0f, x2 - x1)
         val intersectionH = max(0f, y2 - y1)
         val intersectionArea = intersectionW * intersectionH
 
+        // 3) Compute areas of each box
         val areaA = (boxA.x2 - boxA.x1) * (boxA.y2 - boxA.y1)
         val areaB = (boxB.x2 - boxB.x1) * (boxB.y2 - boxB.y1)
+        // 4) Union area = sum of individual areas minus overlap
         val unionArea = areaA + areaB - intersectionArea
 
+        // 5) Return IoU, or 0 if union is zero to avoid division by zero
         return if (unionArea > 0f) intersectionArea / unionArea else 0f
     }
 
     /**
-     * Rescale from letterbox-space back to original image coords.
+     * Rescale from letterbox-space (model input) back to original image coordinates.
+     *
+     * @param detection      The raw DetectionResult with coordinates normalized to model input size.
+     * @param originalWidth  Width of the original image (before letterboxing).
+     * @param originalHeight Height of the original image.
+     * @param padOffsets     Pair(padLeft, padTop): pixel offsets added during letterboxing.
+     * @param modelInputWidth  Width of the model’s expected input.
+     * @param modelInputHeight Height of the model’s expected input.
+     * @return Pair of:
+     *   1) BoundingBox in original image coordinates,
+     *   2) Center point of the detection in original image coordinates.
      */
     fun rescaleInferencedCoordinates(
         detection: DetectionResult,
@@ -777,36 +819,47 @@ object YOLOHelper {
         modelInputWidth: Int,
         modelInputHeight: Int
     ): Pair<BoundingBox, Point> {
+        // 1) Compute uniform scale factor used when letterboxing:
+        //    scale = min(modelW/origW, modelH/origH)
         val scale = min(
-            modelInputWidth / originalWidth.toDouble(),
+            modelInputWidth  / originalWidth.toDouble(),
             modelInputHeight / originalHeight.toDouble()
         )
+
+        // 2) Unpack the padding (in pixels) applied on left and top:
         val (padLeft, padTop) = padOffsets.first.toDouble() to padOffsets.second.toDouble()
 
+        // 3) Map normalized detection center/size back to letterbox pixel coords:
         val xCenterLetter = detection.xCenter * modelInputWidth
         val yCenterLetter = detection.yCenter * modelInputHeight
-        val wLetter       = detection.width  * modelInputWidth
-        val hLetter       = detection.height * modelInputHeight
+        val wLetter       = detection.width     * modelInputWidth
+        val hLetter       = detection.height    * modelInputHeight
 
+        // 4) Remove padding and divide by scale to get coords in original image space:
         val xCenterOrig = (xCenterLetter - padLeft) / scale
         val yCenterOrig = (yCenterLetter - padTop)  / scale
         val wOrig       = wLetter / scale
         val hOrig       = hLetter / scale
 
+        // 5) Compute top-left and bottom-right corners of the box:
         val x1 = xCenterOrig - (wOrig / 2)
         val y1 = yCenterOrig - (hOrig / 2)
         val x2 = xCenterOrig + (wOrig / 2)
         val y2 = yCenterOrig + (hOrig / 2)
 
+        // 6) Build the final BoundingBox with the original confidence and class ID:
         val boundingBox = BoundingBox(
-            x1.toFloat(),
-            y1.toFloat(),
-            x2.toFloat(),
-            y2.toFloat(),
-            detection.confidence,
-            1
+            x1 = x1.toFloat(),
+            y1 = y1.toFloat(),
+            x2 = x2.toFloat(),
+            y2 = y2.toFloat(),
+            confidence = detection.confidence,
+            classId    = 1   // default class for now
         )
+
+        // 7) Also return the center point in original image space:
         val center = Point(xCenterOrig, yCenterOrig)
+
         return boundingBox to center
     }
 
