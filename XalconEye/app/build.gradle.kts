@@ -4,11 +4,11 @@ plugins {
 }
 
 android {
-    namespace = "com.developer27.xalconeye"
+    namespace = "com.developer27.falconeye"
     compileSdk = 34
 
     defaultConfig {
-        applicationId = "com.developer27.xalconeye"
+        applicationId = "com.developer27.falconeye"
         minSdk = 26
         targetSdk = 34
         versionCode = 1

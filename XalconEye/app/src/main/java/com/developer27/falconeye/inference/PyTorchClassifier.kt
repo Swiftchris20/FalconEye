@@ -1,5 +1,5 @@
 // File: PyTorchClassifier3.kt
-package com.developer27.xalconeye.inference
+package com.developer27.falconeye.inference
 
 import android.content.Context
 import android.graphics.Bitmap

@@ -1,4 +1,4 @@
-package com.developer27.xalconeye.inference
+package com.developer27.falconeye.inference
 
 import android.content.Context
 import org.pytorch.Module

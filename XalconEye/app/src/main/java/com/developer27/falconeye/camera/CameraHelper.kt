@@ -1,4 +1,4 @@
-package com.developer27.xalconeye.camera
+package com.developer27.falconeye.camera
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -21,8 +21,8 @@ import android.view.MotionEvent
 import android.view.Surface
 import android.widget.Toast
 import androidx.annotation.RequiresPermission
-import com.developer27.xalconeye.MainActivity
-import com.developer27.xalconeye.databinding.ActivityMainBinding
+import com.developer27.falconeye.MainActivity
+import com.developer27.falconeye.databinding.ActivityMainBinding
 import kotlin.math.max
 
 /**

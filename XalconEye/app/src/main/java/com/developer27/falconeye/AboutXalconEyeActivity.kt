@@ -1,10 +1,10 @@
-package com.developer27.xalconeye
+package com.developer27.falconeye
 
 import android.content.Intent
 import android.net.Uri
 import android.os.Bundle
 import androidx.appcompat.app.AppCompatActivity
-import com.developer27.xalconeye.databinding.ActivityAboutXalconeyeBinding
+import com.developer27.falconeye.databinding.ActivityAboutXalconeyeBinding
 
 class AboutXalconEyeActivity : AppCompatActivity() {
 

@@ -1,13 +1,13 @@
 @file:Suppress("SameParameterValue")
 
-package com.developer27.xalconeye.videoprocessing
+package com.developer27.falconeye.videoprocessing
 
 import android.content.Context
 import android.graphics.Bitmap
 import android.graphics.Color
 import android.graphics.Rect
 import android.util.Log
-import com.developer27.xalconeye.MainActivity
+import com.developer27.falconeye.MainActivity
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch

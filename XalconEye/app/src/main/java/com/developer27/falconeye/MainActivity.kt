@@ -1,4 +1,4 @@
-package com.developer27.xalconeye
+package com.developer27.falconeye
 
 import android.Manifest
 import android.annotation.SuppressLint
@@ -33,11 +33,11 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.core.content.ContextCompat
 import androidx.core.splashscreen.SplashScreen.Companion.installSplashScreen
 import androidx.core.view.isVisible
-import com.developer27.xalconeye.camera.CameraHelper
-import com.developer27.xalconeye.databinding.ActivityMainBinding
-import com.developer27.xalconeye.inference.PyTorchClassifier
-import com.developer27.xalconeye.videoprocessing.Settings
-import com.developer27.xalconeye.videoprocessing.VideoProcessor
+import com.developer27.falconeye.camera.CameraHelper
+import com.developer27.falconeye.databinding.ActivityMainBinding
+import com.developer27.falconeye.inference.PyTorchClassifier
+import com.developer27.falconeye.videoprocessing.Settings
+import com.developer27.falconeye.videoprocessing.VideoProcessor
 import org.tensorflow.lite.Interpreter
 import org.tensorflow.lite.gpu.GpuDelegate
 import org.tensorflow.lite.nnapi.NnApiDelegate

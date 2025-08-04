@@ -1,4 +1,4 @@
-package com.developer27.xalconeye
+package com.developer27.falconeye
 
 import android.content.Intent
 import android.content.pm.ActivityInfo
@@ -9,7 +9,7 @@ import androidx.appcompat.app.AppCompatActivity
 import androidx.preference.ListPreference
 import androidx.preference.PreferenceFragmentCompat
 import androidx.preference.SwitchPreference
-import com.developer27.xalconeye.videoprocessing.Settings
+import com.developer27.falconeye.videoprocessing.Settings
 
 class SettingsActivity : AppCompatActivity() {
 

@@ -26,7 +26,7 @@
         android:dataExtractionRules="@xml/data_extraction_rules"
         android:fullBackupContent="@xml/backup_rules"
         android:icon="@drawable/falconeye"
-        android:label="XalconEye"
+        android:label="FalconEye"
         android:roundIcon="@drawable/falconeye"
         android:supportsRtl="true"
         android:theme="@style/Theme.XalconEye"
